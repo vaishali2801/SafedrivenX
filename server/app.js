@@ -14,14 +14,37 @@ const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
 
-app.use(helmet());
+const isProduction = env.NODE_ENV === 'production';
+
+if (isProduction) {
+  app.use(helmet({
+    contentSecurityPolicy: false,
+  }));
+} else {
+  app.use(helmet());
+}
+
+const allowedOrigins = [
+  env.CLIENT_URL,
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:5000',
+].filter(Boolean);
 
 app.use(
   cors({
-    origin: [env.CLIENT_URL, 'http://localhost:5173', 'http://localhost:3000'],
+    origin: allowedOrigins,
     credentials: true,
   })
 );
+
+if (isProduction) {
+  app.use(express.static(path.join(__dirname, 'public'), {
+    maxAge: '1y',
+    etag: true,
+    lastModified: true,
+  }));
+}
 
 if (env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
@@ -108,6 +131,15 @@ app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/simulation', require('./routes/simulationRoutes'));
 app.use('/api/demo', require('./routes/demoRoutes'));
+
+if (isProduction) {
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+      return next();
+    }
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  });
+}
 
 app.use(apiLimiter);
 app.use(notFound);
